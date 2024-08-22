@@ -6,4 +6,4 @@ You are a junior data analyst working on the marketing analyst team at Cyclistic
 
 ## Check the R Markdown File of the analysis of the project
 
-To see all the analysis made for this capstone project click **[HERE](file:///C:/Users/91944/Documents/Google-Data-Analytics-Capstone-Project/project.html)**
+To see all the analysis made for this capstone project click **[HERE](https://rpubs.com/Lahari/1212620)**
