@@ -1,0 +1,657 @@
+---
+title: "Google Data Analytics Captsone Project"
+author: "Lahari Sanku"
+date: "2024-08-20"
+---
+
+# Cyclistic bike-share program
+
+<center>
+
+![](cyclistic-img.png){width="200"}
+</center>
+
+## Role
+
+As a part of the Google Capstone Project, I played the role of a junior data analyst. I used Ask, Prepare, Process, Analyze, Share and Act data analysis process.
+
+## Scenario
+
+Cyclistic is a bike-share company with more than 5800 bicycles and 600 docking stations. The company offers:
+
+* 3 bike types: electric, classic, and docked bikes
+* 3 pricing plans: single-ride passes, full-day passes, and annual memberships
+    
+Cyclistic bike riders include:
+
+1. Casual Riders: who purchase signle ride passes or full ride passes
+2. Cyclistic members: who opt for annual memberships
+    
+Since annual members are more than casual riders, Lily Moreno, the company's marketing director, instead of creating a marketing campaign that targets all-new customers, she believes there is a solid opportunity to convert casual riders into annual members.
+
+The team needs to better understand how annual members and casual riders differ, why casual riders would buy a membership, and how digital media could affect their marketing tactics.
+
+## Ask
+
+Based on the understanding the primary stakeholders are: 
+
+* Lily Moreno – Manager/Director of marketing 
+* Cyclistic marketing analytics team 
+* Cyclistic executive team - Cyclists/riders/clients
+
+My business task is to analyze and compare the different riding patterns of casual riders and annual members in last 12 months.
+
+## Prepare
+
+Collected different data sets from divvybikes provided by Google Data Analysis Certification program resources. I have downloaded data from August 2023 to August 2024.
+
+It is secure because no one else is manipulating the data from the amazon bucket, and the accessibility for any type of person to feel free to downloaded, analyze it, copy, modify and distribute the product. 
+
+## Process
+
+I used R to investigate the data sets and Excel for some minimum error checks.
+### Installing packages
+
+Importing the `tidyverse`, `readr`, `janitor`, `DescTools`, `lubridate` libraries
+
+```{r}
+library(tidyverse)
+library(readr)
+library(janitor)
+library(DescTools)
+library(lubridate)
+library(ggplot2)
+library(dplyr)
+```
+
+### Loading the datasets
+
+Load divvybikes datasets for past 12 months
+
+```{r message=FALSE}
+divvy_bikes <- list.files(path = setwd("C:/Users/91944/Documents/Google-Data-Analytics-Capstone-Project/datasets"), 
+                       pattern = "*.csv", full.names = TRUE) %>% 
+  lapply(read_csv) %>% 
+  bind_rows
+```
+
+#### Data profiling
+
+* Identifying anomalies
+* Inspecting data
+
+```{r}
+glimpse(divvy_bikes)
+```
+
+After inspecting the dataset, we found many columns has NA Values
+Finding the number of NA values in each column
+
+```{r}
+na_values <- divvy_bikes %>%
+  summarise_all(~ sum(is.na(.)))
+glimpse(na_values)
+```
+
+### Cleaning the data
+
+To check the column names of the dataset are correct or not we use funcion from "Janitor" library
+
+```{r} 
+clean_names(divvy_bikes)
+```
+
+Checking the whether each column has the correct data type
+
+```{r}
+sapply(divvy_bikes,typeof)
+```
+
+We need to check if the dataset contains duplicate values or not by using ride_id which is primary key
+
+```{r}
+duplicate_values <- divvy_bikes %>%
+  get_dupes(ride_id)
+duplicate_values
+```
+
+The result shows 422 values which is combination of original and duplicated values. So the dataset contain **211 duplicated values**
+
+#### Handling duplicated values
+
+Now, we need to extract the distinct values from each column which means 211 duplicate rows will be removed from dataset.
+
+To remove duplicates we use "distinct" function using ride_id field from dataset.
+
+```{r}
+divvy_bikes_cleaned <-divvy_bikes %>%
+  distinct(ride_id,.keep_all = TRUE)
+glimpse(divvy_bikes_cleaned)
+```
+
+Now all the duplicate rows are removed.
+
+Total number of records in new data set is 5,715,482.
+
+*5715693 (original dataset) - 211 (duplicate records) = 5715482 (cleaned dataset)* 
+
+### Getting info about the dataset
+
+For calculating the ride length of each ride, we need to add new column *ride_length* which is difference between the *started_at* and *ended_at* in minutes.
+
+```{r}
+divvy_bikes_processed <- divvy_bikes_cleaned %>%
+  mutate(ride_length = round(difftime(ended_at,started_at,units = "mins"),digits = 2))
+```
+
+we need to check if the ride_length has any negatives values or not which means ride_length <0
+
+```{r}
+negative_ride_length <- divvy_bikes_processed %>%
+  filter(ride_length <0)
+negative_ride_length
+```
+
+Clearly we can see that 404 records have negative values which means that end time is before than start time.
+
+We need to correct it in 2 approaches:
+
+* Removing the records whose *ride_length* less than zero 
+* By changing the values to correct columns by using condition statement.
+
+I followed second approach becuase if we remove the records we may loose some data.
+
+```{r}
+divvy_bikes_processed <- divvy_bikes_processed %>%
+  mutate(new_started_at = ifelse(ride_length<0,as_datetime(ended_at),as_datetime(started_at)),
+         new_ended_at = ifelse(ride_length<0,as_datetime(started_at),as_datetime(ended_at)),
+         started_at=as_datetime(new_started_at), ended_at=as_datetime(new_ended_at)) %>%
+  select(-new_started_at,-new_ended_at)
+```
+
+We changed the values of start time and end time by using *ifelse* condition and replaced start and end time columns with correct values and dropped newly created columns by using *select* function.
+
+Now I calculated and checked if the ride_length column has any negative values or not.
+
+```{r}
+divvy_bikes_processed <- divvy_bikes_processed %>%
+  mutate(ride_length = round(difftime(ended_at,started_at,units = "mins"),digits = 2))
+```
+
+```{r}
+negative_ride_length <- divvy_bikes_processed %>%
+  filter(ride_length<0)
+negative_ride_length
+```
+
+Now, the dataset does not contain any negative values.
+
+## Analyze the dataset and Visualization
+
+We need to perform some calculations for analysis.
+
+### Calculations on datasets
+
+#### Per day of week
+
+Creating a new column *day_of_week* to calculate which day the ride is starting.
+
+```{r}
+divvy_bikes_processed <- divvy_bikes_processed %>%
+  mutate(day_of_week = weekdays(as.Date(started_at)))
+head(divvy_bikes_processed)
+```
+
+To analyze the data we need to have mean, max, and mode of dataset by grouping *member_casual* column to find ride length and day of the week for two memberships.
+
+```{r}
+member_casuals <- divvy_bikes_processed %>%
+  group_by(member_casual) %>%
+  summarise(avg_ride_length=mean(ride_length),max_ride_length = max(ride_length), mode_day_of_week = Mode(day_of_week), no_of_rides=n_distinct(ride_id))
+member_casuals
+```
+From the analysis we can know that casual members use cycles on Saturday and membership users on Wednesday.
+
+Now we calculate average ride length and total no of rides grouping by type of member and day of the week.
+
+```{r}
+divvy_bikes_week <- divvy_bikes_processed %>%
+  group_by(member_casual,day_of_week) %>%
+  summarise(avg_ride_length=mean(ride_length),no_of_rides=n_distinct(ride_id))
+divvy_bikes_week
+```
+
+Finding maximum no of rides for both members and casual riders on week
+
+```{r}
+max_no_of_rides <- divvy_bikes_week %>%
+  group_by(member_casual)%>%
+  slice_max(no_of_rides)
+max_no_of_rides
+```
+Most of the casual riders ride on **Saturday** with 41522 rides.
+
+Most of the Member riders ride on **Wednesday** with 616033.
+
+Percentage of rides for each day of the week
+
+```{r}
+rides_percentage <- divvy_bikes_processed %>%
+  group_by(day_of_week)%>%
+  summarise(no_of_rides=n_distinct(ride_id)) %>%
+  mutate(percentage = (no_of_rides/sum(no_of_rides))*100)
+rides_percentage
+```
+**Saturday** has higher percentage of rides during the year.So we need to analyze the behaviour of each type on Saturday.
+
+```{r}
+saturday_rides <- divvy_bikes_week %>%
+  filter(day_of_week == "Saturday") %>%
+  group_by(member_casual,day_of_week) %>%
+  summarise(no_of_rides=sum(no_of_rides)) 
+saturday_rides <- mutate(saturday_rides,percentage=(no_of_rides/sum(saturday_rides$no_of_rides))*100)
+saturday_rides
+```
+
+The member riders represent 53.2% of the rides on busiest day(Saturday) and 46.8% of rides by casual riders.
+
+
+#### Per season of year
+
+To calculate we need to create a new column *Season_of_year* to identify the seasons of the ride taken.
+
+```{r}
+divvy_bikes_processed <- divvy_bikes_processed %>%
+  mutate(season_of_year = ifelse(month(started_at)==12 | month(started_at)==1 | month(started_at)==2, "Winter",ifelse(month(started_at)==3 | month(started_at)==4 | month(started_at)==5, "Spring",ifelse(month(started_at)==6 | month(started_at)==7| month(started_at)==8, "Summer", "Autumn"))))
+
+head(divvy_bikes_processed)
+```
+
+Now we calculate average ride length and total number of rides grouping by type of member and season of year and percentage of rides on each season
+
+```{r}
+divvy_bikes_season <- divvy_bikes_processed %>%
+  group_by(member_casual,season_of_year) %>%
+  summarise(avg_ride_length=mean(ride_length),no_of_rides=n_distinct(ride_id)) %>%
+  mutate(percentage=(no_of_rides/sum(no_of_rides))*100)
+divvy_bikes_season
+```
+
+Finding maximum number of rides for both members and casual riders on season
+
+```{r}
+max_no_of_rides_season<- divvy_bikes_season %>%
+  group_by(member_casual) %>%
+  slice_max(no_of_rides)
+max_no_of_rides_season
+```
+Season with most number of casual riders is *Summer* with 93267 rides.
+
+Season with most number of member riders is *Summer* with 1298494 rides.
+
+Visualizing percentage of rides on each season of the year
+
+```{r}
+season_rides_percentage <- divvy_bikes_processed %>%
+  group_by(season_of_year) %>%
+  summarise(no_of_rides=n_distinct(ride_id)) %>%
+  mutate(percentage=(no_of_rides/sum(no_of_rides))*100)
+season_rides_percentage
+```
+
+**Summer** has higher percentage of rides during the year.So we need to analyze the behaviour of each type on Summer.
+
+```{r}
+summer_rides <- divvy_bikes_season %>%
+  filter(season_of_year=="Summer") %>%
+  group_by(member_casual,season_of_year) %>%
+  summarise(no_of_rides=sum(no_of_rides))
+summer_rides <- mutate(summer_rides,percentage=(no_of_rides/sum(summer_rides$no_of_rides))*100)
+summer_rides
+```
+
+The member riders represent 58.2% of the rides on busiest season (Summer) and 41.8% of rides by casual riders.
+
+#### Per month of year
+
+First we create a new column *month_of_year* to identify the month of the year
+
+```{r}
+divvy_bikes_processed <- divvy_bikes_processed %>%
+  mutate(month_of_year = month(started_at))
+head(divvy_bikes_processed)
+```
+
+Calculate the average ride length, total number of rides and percentage of rides by grouping type of riders and month of year.
+
+```{r}
+divvy_bikes_month <- divvy_bikes_processed %>%
+  group_by(member_casual,month_of_year) %>%
+  summarise(avg_ride_length=mean(ride_length),no_of_rides=n_distinct(ride_id)) %>%
+  mutate(percentage=(no_of_rides/sum(no_of_rides))*100)
+divvy_bikes_month
+```
+
+Calculating maximum of rides for both members and casual riders for each month of the year
+
+```{r}
+max_no_of_rides_month <- divvy_bikes_month %>%
+  group_by(member_casual) %>%
+  slice_max(no_of_rides)
+max_no_of_rides_month
+```
+
+Month with most number of casual riders is *July* with 320372 rides.
+
+Month with most number of member riders is *August* with 460563 rides.
+
+Calculating percentage of rides on each month
+
+```{r}
+monthly_rides_percentage <- divvy_bikes_processed %>%
+  group_by(month_of_year) %>%
+  summarise(no_of_rides=n_distinct(ride_id)) %>%
+  mutate(percentage = (no_of_rides/sum(no_of_rides))*100)
+monthly_rides_percentage
+```
+
+**August** has higher percentage of rides during the year.So we need to analyze the behaviour of each type on members.
+
+```{r}
+august_rides <- divvy_bikes_month %>%
+  filter(month_of_year==8) %>%
+  group_by(member_casual,month_of_year) %>%
+  summarise(no_of_rides=sum(no_of_rides))
+
+august_rides <- mutate(august_rides,percentage =(no_of_rides/sum(august_rides$no_of_rides))*100)
+august_rides
+```
+
+The member riders represent 59.7% of the rides on busiest month(August) and 40.3% of rides by casual riders.
+
+#### Per hour of the day
+
+```{r}
+divvy_bikes_hour <- divvy_bikes_processed %>%
+  mutate(hour_started_at = hour(started_at))
+divvy_bikes_hour <- divvy_bikes_hour %>%
+  group_by(member_casual,hour_started_at) %>%
+  summarize(no_of_rides=n_distinct(ride_id))
+
+divvy_bikes_hour
+```
+
+#### Ride type
+
+Next, we will analyse the ride types that riders prefer to use.
+
+```{r}
+ride_types <- divvy_bikes_processed %>%
+  group_by(member_casual,rideable_type) %>%
+  summarise(no_of_rides = n_distinct(ride_id))
+
+ride_types
+```
+
+From the analysis we can say that member riders prefer classic bikes than electric and docked bikes where as casual riders prefer electric bikes.
+
+#### Consolidated analysis
+
+Now we are calcuating the highest no of rides according to day, month and season
+
+```{r}
+divvy_bikes_consolidated <- divvy_bikes_processed %>%
+  group_by(member_casual,day_of_week,month_of_year,season_of_year) %>%
+  summarise(avg_ride_length = mean(ride_length), no_of_rides=n_distinct(ride_id))
+divvy_bikes_consolidated
+```
+
+Also, we can visualize each type of member that had the most number of rides according to the day, month and season.
+
+```{r}
+max_no_of_rides_consolidated <- divvy_bikes_consolidated %>%
+  group_by(member_casual) %>%
+  slice_max(no_of_rides)
+max_no_of_rides_consolidated
+```
+
+The most rides for the casual riders occur in Autumn, on September, on a Saturday with 68408 rides.
+
+The most rides for the member riders occur in Summer, on August, on a Tuesday with 82787 rides.
+
+## Visualizations
+
+We need to present the visualization of the analysis we made so far.
+
+### Total number of rides
+
+#### Per day of week
+
+```{r}
+divvy_bikes_week %>% 
+  mutate(day_of_week = factor(day_of_week,levels=c('Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'))) %>%
+  ggplot(aes(x=day_of_week,y=no_of_rides, fill=member_casual)) +
+  geom_col(width=0.7,position = position_dodge(width=0.5)) +
+  ggtitle("Total trips by type of riders vs day of the week (Saturday)") +
+  theme(plot.title = element_text(hjust=0.5)) +
+  scale_y_continuous(labels=function(x) format(x,scientific=FALSE)) +
+  labs(fill= "Type of rider")
+```
+
+From the visualization we can say *Wednesday is the day with more number of member riders* and *Saturday is the day with more number of casual riders*.
+
+So we understood than casual drivers make use of bikes during weekends, while member riders are busy during the week.
+
+The busiest day of week for all riders is Saturday based on our analysis.
+
+```{r}
+saturday_rides %>% 
+  ggplot(aes(x=day_of_week,y=no_of_rides,fill=member_casual)) +
+  geom_col(width=0.5,position="dodge") +
+  ggtitle("Total trips by type of riders vs Busiest day of week") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_y_continuous(labels=function(x) format(x,scientific=FALSE)) +
+  labs(fill="Type of riders") +
+  geom_text(aes(label=no_of_rides),position=position_dodge(width = 0.5),size=4,vjust=-0.3)
+```
+
+#### Per month and season
+
+```{r}
+divvy_bikes_month %>%
+  mutate(month_of_year = month.abb[month_of_year]) %>%
+  mutate(month_of_year = factor(month_of_year,levels=c('Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May','Jun','Jul'))) %>%
+  ggplot(aes(x=month_of_year,y=no_of_rides,fill=member_casual)) +
+  geom_col(width=0.5,position=position_dodge(width=0.5)) +
+  ggtitle("Total trips by type of riders vs Month of the year (Aug 23 to July 24)") +
+  theme(plot.title = element_text(hjust=0.5)) +
+  scale_y_continuous(labels = function(x) format(x,scientific=FALSE)) +
+  labs(fill="Type of riders")
+```
+
+From visualization, *August is the month with most member riders* and *July is the month with most casual member riders*.
+
+#### Per season of the year
+
+```{r}
+divvy_bikes_season %>%
+  ggplot(aes(x=season_of_year, y=no_of_rides,fill=member_casual)) +
+  geom_col(width=0.5,position=position_dodge(width = 0.5)) +
+  ggtitle("Total trips by type of riders vs Season of the year") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_y_continuous(labels=function(x) format(x,scientific=FALSE)) +
+  labs(fill= "Type of riders")
+```
+
+We can see that *Summer is the busiest season for both type of riders* and *Winter is the lowest season*.
+
+As Summer is most busiest season, we need to analyze in more detail:
+
+```{r}
+summer_rides %>%
+  ggplot(aes(x=season_of_year,y=no_of_rides,fill=member_casual)) +
+  geom_col(position="dodge",width=0.5) +
+  ggtitle("Total trip by type of riders vs Busiest season(Summer)") +
+  theme(plot.title = element_text(hjust=0.5)) +
+  scale_y_continuous(labels = function(x) format(x,scientific=FALSE)) +
+  labs(fill="Type of rider") +
+  geom_text(aes(label=str_c(round(percentage,digits=2),"%",sep="")),position = position_dodge(width=0.5),size=4,vjust=-0.3)
+```
+
+The member riders represent 58.2% of the rides that are taken in the busiest season (Summer), while casual members represent the 41.8% of the rides.
+ 
+### Average trip duration
+
+#### Per day of week
+
+```{r}
+divvy_bikes_week %>%
+  mutate(day_of_week= factor(day_of_week,levels=c('Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'))) %>%
+  ggplot(aes(x=day_of_week,y=avg_ride_length,fill=member_casual)) +
+  geom_col(width=0.5,position=position_dodge(width = 0.5)) +
+  ggtitle("Avg trip duration by type of riders vs Day of week") +
+  theme(plot.title = element_text(hjust=0.5)) +
+  scale_y_continuous(labels=function(x) format(x,scientific=FALSE)) +
+  labs(fill="Type of rider")
+```
+
+Highest average for trip duration for casual and member riders is on Sunday, followed by Saturday.
+
+This means that the longest rides are happening on the weekends.
+
+#### Per month of year
+
+```{r}
+divvy_bikes_month %>%
+  mutate(month_of_year = month.abb[month_of_year]) %>%
+  mutate(month_of_year = factor(month_of_year,levels=c('Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May','Jun','Jul'))) %>%
+  ggplot(aes(x=month_of_year,y=avg_ride_length,fill=member_casual)) +
+  geom_col(width=0.5,position=position_dodge(width = 0.5)) +
+  ggtitle("Avg trip duration by type of rider vs Month of year (Aug 23 to Jul 24)") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_y_continuous(labels = function(x) format(x,scientific=FALSE)) +
+  labs(fill="Type of riders")
+```
+
+The visualization above determine that the month of August is the highest average of trip duration for the casual riders.June is the highest average of trip duration for member riders.
+
+#### Per season of year
+
+```{r}
+divvy_bikes_season %>%
+  ggplot(aes(x=season_of_year,y=avg_ride_length,fill=member_casual)) +
+  geom_col(width=0.5,position=position_dodge(width=0.5)) +
+  ggtitle("Avg trip duration by type of riders vs Season of the year") +
+  theme(plot.title=element_text(hjust=0.5)) +
+  scale_y_continuous(labels = function(x) format(x,scientific=FALSE)) +
+  labs(fill="Type of riders")
+```
+
+Summer season is the one who has the highest average of trip duration for both casual and member riders.
+
+### Per hour of the day
+```{r}
+divvy_bikes_hour %>%
+  ggplot(aes(x=hour_started_at,y=no_of_rides,color=member_casual,group = member_casual))+
+  geom_line(size=1)+
+  geom_point(size=2) +
+  theme(plot.title = element_text(hjust=0.5)) +
+  labs(title="Use of bikes for 24 hours",x="Time of day") +
+  labs(color="Type of riders") +
+  scale_x_continuous(breaks = scales::breaks_width(1)) +
+  scale_y_continuous(labels = function(x) format(x, scientific = FALSE))+
+  geom_hline(aes(yintercept = max(no_of_rides)))
+```
+
+The busiest hour of the day for the use of bikes for members and casual riders is both at hour 17.
+
+### Ride types
+
+Next, we will visualize the ride types that riders prefer to use.
+
+```{r}
+ride_types %>%
+  ggplot(aes(x=rideable_type,y=no_of_rides,fill=member_casual)) +
+  geom_col(width=0.5) +
+  ggtitle("Ride type vs No of rides") +
+  theme(plot.title=element_text(hjust=0.5)) +
+  scale_y_continuous(labels = function(x) format(x,scientific=FALSE)) +
+  labs(fill="Type of riders") +
+  geom_text(aes(label = no_of_rides),size=4,vjust=-0.8)
+```
+
+We are using pie chart to visualize the percentage of the ride types used.
+
+```{r}
+ride_types %>%
+  group_by(rideable_type) %>%
+  summarise(no_of_rides=sum(no_of_rides)) %>%
+  ggplot(aes(x="",y=no_of_rides,fill=rideable_type)) +
+  geom_col(color="black") +
+  ggtitle("Amount of rides for each type") +
+  theme(plot.title = element_text(hjust=0.5)) +
+  labs(fill="Ride type") +
+  geom_text(aes(label=str_c(round((no_of_rides/sum(no_of_rides)*100),digits=2),"%",sep="")),position=position_stack(vjust=0.5)) +
+  coord_polar("y",start=0) +
+  theme_void()
+```
+
+The visualizations above determine that the classic and electric bikes are the most favorite for both types of riders: casual and member. Almost the 50 and 50 percent are distributed among those two ride types. The docked bike is not common used with 0.28% of rides.
+
+### Average trip duration by rider type
+
+```{r}
+member_casuals %>%
+  ggplot(aes(x="",y=avg_ride_length,fill=member_casual)) +
+  geom_col(color="black") +
+  ggtitle("Avg trip duration for each rider type") +
+  theme(plot.title = element_text(hjust=0.5)) +
+  labs(fill="Type of rider") +
+  geom_text(aes(label=str_c(round(avg_ride_length,digit=2),"mins",sep=" ")),position = position_stack(vjust=0.5)) +
+  coord_polar("y",start=0) +
+  theme_void()
+```
+
+From the visualization above we can determine that the average of the trip duration from the casual riders is more than twice than the member riders.
+
+### Total amount of rides
+
+```{r}
+member_casuals %>%
+  ggplot(aes(x="",y=no_of_rides,fill=member_casual)) +
+  geom_col(color="black") +
+  ggtitle("Total amount of rides for each rider type") +
+  theme(plot.title = element_text(hjust=0.5)) +
+  labs(fill="Type of rider") +
+  geom_text(aes(label = str_c(round((no_of_rides/sum(no_of_rides))*100,digits=2),"%",sep="")),
+position=position_stack(vjust=0.5)) +
+  coord_polar("y",start=0) +
+  theme_void()
+```
+
+We can determine that the total % amount of rides from the member riders is almost twice (with 64.33%) than the casual riders (with 35.67%).
+
+## Summary of findings
+
+From the data collected (August 2023 to July 2024) of Cyclist collection, following conclusions have been drawn:
+
+* Casual rides prefer longer trips than member riders, but member riders have more number of rides for days, months and season.
+* The average of trip duration of casual riders is twice more than member riders.
+* Total percentage amount of rides of member riders is almost twice than casual riders.
+* Almost 50 and 50 percent of classic and electric bikes are distributed between casual and member riders. And 0.28% of docked bike is used by both the riders.
+* The busiest hour of the day is 17:00 for both type of riders.
+* Casual riders use cyclist services during the weekend while annual members use on weekdays.
+* August is preferable month for member rides and July for casual riders.
+* Both annual members and casual riders prefer Summer season with usage of 35% of bikes during year.
+
+## Recommendations
+
+* Offers montly and quaterly memberships. This flexibility in prices helps in Cyclistic's profit
+* Offer discounted membership for new members in first 3 months and discounted membership renewals for after every year.
+* Make campaigns or promotion in Summer season where most of the riders use Cyclist's services.
+
+## Resources
+
+* Stackoverflow
+* RStudio Posit Community
+* RDocumentation
